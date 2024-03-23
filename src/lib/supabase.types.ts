@@ -57,6 +57,102 @@ export type Database = {
         }
         Relationships: []
       }
+      expenses: {
+        Row: {
+          account_id: number | null
+          category_id: number | null
+          created_at: string
+          decimal_amount: number
+          id: number
+          main_amount: number
+          notes: string | null
+          transacted_at: string
+        }
+        Insert: {
+          account_id?: number | null
+          category_id?: number | null
+          created_at?: string
+          decimal_amount?: number
+          id?: number
+          main_amount?: number
+          notes?: string | null
+          transacted_at?: string
+        }
+        Update: {
+          account_id?: number | null
+          category_id?: number | null
+          created_at?: string
+          decimal_amount?: number
+          id?: number
+          main_amount?: number
+          notes?: string | null
+          transacted_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "expenses_account_id_fkey"
+            columns: ["account_id"]
+            isOneToOne: false
+            referencedRelation: "accounts"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "expenses_category_id_fkey"
+            columns: ["category_id"]
+            isOneToOne: false
+            referencedRelation: "categories"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      incomes: {
+        Row: {
+          account_id: number | null
+          category_id: number | null
+          created_at: string
+          decimal_amount: number
+          id: number
+          main_amount: number
+          notes: string | null
+          transacted_at: string
+        }
+        Insert: {
+          account_id?: number | null
+          category_id?: number | null
+          created_at?: string
+          decimal_amount?: number
+          id?: number
+          main_amount?: number
+          notes?: string | null
+          transacted_at?: string
+        }
+        Update: {
+          account_id?: number | null
+          category_id?: number | null
+          created_at?: string
+          decimal_amount?: number
+          id?: number
+          main_amount?: number
+          notes?: string | null
+          transacted_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "incomes_account_id_fkey"
+            columns: ["account_id"]
+            isOneToOne: false
+            referencedRelation: "accounts"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "incomes_category_id_fkey"
+            columns: ["category_id"]
+            isOneToOne: false
+            referencedRelation: "categories"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
     }
     Views: {
       [_ in never]: never
