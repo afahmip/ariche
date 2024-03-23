@@ -2,6 +2,7 @@ import type { Metadata } from "next";
 import { Plus_Jakarta_Sans } from "next/font/google";
 import "./globals.css";
 import { cn } from "@/lib/utils";
+import { QueryClientProvider } from "@/context/query";
 
 const font = Plus_Jakarta_Sans({
   subsets: ["latin"],
@@ -27,9 +28,11 @@ export default function RootLayout({
           "bg-gray-50 flex justify-center items-center"
         )}
       >
-        <main className="bg-white w-[450px] min-h-screen relative">
-          {children}
-        </main>
+        <QueryClientProvider>
+          <main className="bg-white w-[450px] min-h-screen relative">
+            {children}
+          </main>
+        </QueryClientProvider>
       </body>
     </html>
   );
