@@ -3,6 +3,7 @@ import { Plus_Jakarta_Sans } from "next/font/google";
 import "./globals.css";
 import { cn } from "@/lib/utils";
 import { QueryClientProvider } from "@/context/query";
+import Navbar from "./navbar";
 
 const font = Plus_Jakarta_Sans({
   subsets: ["latin"],
@@ -30,7 +31,8 @@ export default function RootLayout({
       >
         <QueryClientProvider>
           <main className="bg-white w-[450px] min-h-screen relative">
-            {children}
+            <div className="pb-8">{children}</div>
+            <Navbar />
           </main>
         </QueryClientProvider>
       </body>

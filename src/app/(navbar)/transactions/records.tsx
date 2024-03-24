@@ -30,6 +30,7 @@ export default function Records() {
   const [duration, setDuration] = useState(Duration.Week);
 
   const { data } = useQuery({
+    queryKey: ["transactions-data"],
     queryFn: async () => {
       const supabase = createClientComponentClient<Database>();
       const { data } = await supabase
@@ -40,6 +41,8 @@ export default function Records() {
       if (!data) return [];
       return data;
     },
+    refetchOnWindowFocus: false,
+    enabled: true,
   });
   const expenses = (data || []).filter((row) => {
     const now = DateTime.now();

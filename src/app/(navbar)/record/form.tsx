@@ -59,6 +59,7 @@ export default function RecordForm() {
   const [isExpense, setIsExpense] = useState(true);
 
   const { data } = useQuery({
+    queryKey: ["data-for-new-record"],
     queryFn: async () => {
       const supabase = createClientComponentClient<Database>();
       const [categories, accounts] = await Promise.all([
