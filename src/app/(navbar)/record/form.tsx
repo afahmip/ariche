@@ -14,6 +14,7 @@ import {
   SheetTitle,
   SheetTrigger,
 } from "@/components/ui/sheet";
+import { idrFormat } from "@/lib/currency";
 import { Database } from "@/lib/supabase.types";
 import { cn } from "@/lib/utils";
 import { zodResolver } from "@hookform/resolvers/zod";
@@ -321,7 +322,7 @@ function Keypad(props: { onChange: (val: KeypadAmountData) => void }) {
   const [amount, setAmount] = useState("");
 
   useEffect(() => {
-    props.onChange(renderAmount(amount));
+    props.onChange(renderAmount(amount.replace(",", ".")));
   }, [amount]);
 
   const handleKeyPress = (value: string | number) => {
@@ -342,50 +343,6 @@ function Keypad(props: { onChange: (val: KeypadAmountData) => void }) {
     }
   };
 
-  const renderButtons = () => {
-    const buttons = [];
-    const buttonClass = "basis-2/6 text-2xl h-[70px] font-medium";
-    for (let i = 1; i <= 9; i++) {
-      buttons.push(
-        <button
-          key={i}
-          type="button"
-          onClick={() => handleKeyPress(i)}
-          className={buttonClass}
-        >
-          {i}
-        </button>
-      );
-    }
-    buttons.push(
-      <button
-        key=","
-        type="button"
-        onClick={() => handleKeyPress(",")}
-        className={buttonClass}
-      >
-        ,
-      </button>,
-      <button
-        key={0}
-        type="button"
-        onClick={() => handleKeyPress(0)}
-        className={buttonClass}
-      >
-        0
-      </button>,
-      <button
-        key="C"
-        type="button"
-        onClick={() => handleKeyPress("C")}
-        className={buttonClass}
-      >
-        C
-      </button>
-    );
-    return buttons;
-  };
-
   const renderAmount = (amount: string): KeypadAmountData => {
     if (!amount)
       return {
@@ -399,35 +356,33 @@ function Keypad(props: { onChange: (val: KeypadAmountData) => void }) {
         },
       };
 
-    const amounts = amount.split(",");
-    const mainAmount = amounts[0].split("").reverse().join("");
-    let decimalAmount = "";
-    if (amounts.length > 1) {
-      decimalAmount = amounts[1];
-    }
-
-    const mainAmountDisplay: string[] = [];
-    for (let i = 0; i < mainAmount.length; i += 3) {
-      mainAmountDisplay.push(
-        mainAmount
-          .slice(i, i + 3)
-          .split("")
-          .reverse()
-          .join("")
-      );
-    }
-    mainAmountDisplay.reverse();
+    const formatted = idrFormat(amount).replace("Rp", "").trim().split(",");
+    const main = formatted[0];
+    const decimal = formatted.length > 1 ? formatted[1] : "";
     return {
       main: {
-        amount: parseInt(mainAmountDisplay.join("")),
-        display: mainAmountDisplay.join("."),
+        amount: parseInt(main.replaceAll(".", "")),
+        display: main,
       },
       decimal: {
-        amount: parseInt(decimalAmount || "0"),
-        display: decimalAmount ? `,${decimalAmount}` : "",
+        amount: parseInt(decimal ?? "0"),
+        display: decimal ? `,${decimal}` : "",
       },
     };
   };
 
-  return <div className="flex flex-wrap w-full mb-2">{renderButtons()}</div>;
+  return (
+    <div className="flex flex-wrap w-full mb-2">
+      {[1, 2, 3, 4, 5, 6, 7, 8, 9, ",", 0, "C"].map((v) => (
+        <button
+          key={v}
+          type="button"
+          onClick={() => handleKeyPress(v)}
+          className="basis-2/6 text-2xl h-[70px] font-medium"
+        >
+          {v}
+        </button>
+      ))}
+    </div>
+  );
 }
