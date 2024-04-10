@@ -5,9 +5,11 @@ import { Database } from "@/lib/supabase.types";
 import { cn } from "@/lib/utils";
 import { createClientComponentClient } from "@supabase/auth-helpers-nextjs";
 import _ from "lodash";
+import { Search } from "lucide-react";
 import { DateTime } from "luxon";
 import { useState } from "react";
 import { useQuery } from "react-query";
+import Fuse from "fuse.js";
 
 enum Duration {
   Week = "week",
@@ -28,6 +30,7 @@ type ExpenseGroup = {
 
 export default function Records() {
   const [duration, setDuration] = useState(Duration.Week);
+  const [query, setQuery] = useState("");
 
   const { data } = useQuery({
     queryKey: ["transactions-data"],
@@ -44,7 +47,17 @@ export default function Records() {
     refetchOnWindowFocus: false,
     enabled: true,
   });
-  const expenses = (data || []).filter((row) => {
+  const rawExpenses = data ?? [];
+  const expenses = (
+    !query
+      ? rawExpenses
+      : new Fuse(rawExpenses, {
+          threshold: 0.4,
+          keys: ["notes", "accounts.name"],
+        })
+          .search(query)
+          .map((it) => it.item)
+  ).filter((row) => {
     const now = DateTime.now();
     const start = now.startOf(duration);
     const end = now.endOf(duration);
@@ -96,6 +109,16 @@ export default function Records() {
 
   return (
     <div className="flex flex-col p-4 pt-6">
+      <div className="flex items-center space-x-2 border border-gray-300 rounded-lg pl-2 overflow-hidden mb-2">
+        <Search className="h-4 w-4" />
+        <input
+          type="text"
+          placeholder="Cari di sini"
+          className="text-sm h-8 w-full focus:outline-none"
+          value={query}
+          onChange={(e) => setQuery(e.target.value)}
+        />
+      </div>
       <div className="mb-4 flex">
         {[Duration.Week, Duration.Month, Duration.Year].map((d) => (
           <button
