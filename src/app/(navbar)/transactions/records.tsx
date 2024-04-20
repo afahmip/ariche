@@ -8,8 +8,10 @@ import _ from "lodash";
 import { Search } from "lucide-react";
 import { DateTime } from "luxon";
 import { useState } from "react";
-import { useQuery } from "react-query";
+import { useMutation, useQuery, useQueryClient } from "react-query";
 import Fuse from "fuse.js";
+import { Sheet, SheetContent, SheetTrigger } from "@/components/ui/sheet";
+import RecordForm, { RecordFormSchema } from "@/components/ui/record-form";
 
 enum Duration {
   Week = "week",
@@ -142,28 +144,81 @@ export default function Records() {
             </p>
           </div>
           {group.rows.map((row) => (
-            <div key={row.id} className="flex">
-              <div className="w-10 shrink-0 pt-2">
-                <p className="text-3xl">{row.categories?.icon}</p>
-              </div>
-              <div className="w-full flex pt-2 space-x-3 border-t border-dashed">
-                <div className="w-full">
-                  <p className="font-medium text-sm">{row.categories?.label}</p>
-                  <p className="text-sm text-gray-500">{row.notes}</p>
-                </div>
-                <div className="flex flex-col items-end">
-                  <p className="text-sm">
-                    {idrFormat(`${row.main_amount}.${row.decimal_amount}`)}
-                  </p>
-                  <p className="text-sm whitespace-nowrap text-gray-500">
-                    {row.accounts?.name}
-                  </p>
-                </div>
-              </div>
-            </div>
+            <RecordItem item={row} />
           ))}
         </div>
       ))}
     </div>
+  );
+}
+
+function RecordItem({ item }: { item: Expense }) {
+  const [open, setOpen] = useState(false);
+
+  const queryClient = useQueryClient();
+
+  const { mutate: update, isLoading: isUpdating } = useMutation({
+    mutationFn: async (values: RecordFormSchema) => {
+      if (!values.id) return;
+
+      const supabase = createClientComponentClient<Database>();
+      await supabase
+        .from("expenses")
+        .update({
+          category_id: values.categoryId,
+          account_id: values.accountId,
+          notes: values.notes,
+          main_amount: values.mainAmount,
+          decimal_amount: values.decimalAmount,
+          transacted_at: DateTime.fromJSDate(values.date).toSQL()!,
+        })
+        .eq("id", values.id)
+        .throwOnError();
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries(["transactions-data"]);
+      setOpen(false);
+    },
+  });
+
+  return (
+    <Sheet key={item.id} open={open} onOpenChange={setOpen}>
+      <SheetTrigger className="flex">
+        <div className="w-10 shrink-0 pt-2 flex items-start">
+          <p className="text-3xl">{item.categories?.icon}</p>
+        </div>
+        <div className="w-full flex pt-2 space-x-3 border-t border-dashed">
+          <div className="w-full flex flex-col items-start text-left">
+            <p className="font-medium text-sm">{item.categories?.label}</p>
+            <p className="text-sm text-gray-500">{item.notes}</p>
+          </div>
+          <div className="flex flex-col items-end">
+            <p className="text-sm">
+              {idrFormat(`${item.main_amount}.${item.decimal_amount}`)}
+            </p>
+            <p className="text-sm whitespace-nowrap text-gray-500">
+              {item.accounts?.name}
+            </p>
+          </div>
+        </div>
+      </SheetTrigger>
+      <SheetContent side="bottom" className="h-[90vh] overflow-scroll px-0">
+        <RecordForm
+          initialValue={{
+            id: item.id,
+            mainAmount: item.main_amount,
+            decimalAmount: item.decimal_amount,
+            notes: item.notes || "",
+            isExpense: true,
+            date: DateTime.fromISO(item.transacted_at).toJSDate(),
+            accountId: item.account_id ?? 0,
+            categoryId: item.category_id ?? 0,
+          }}
+          onSubmit={(values) => update(values)}
+          isSubmitting={isUpdating}
+          submitText="Update"
+        />
+      </SheetContent>
+    </Sheet>
   );
 }

@@ -1,5 +1,5 @@
-import RecordForm from "./form";
+import Form from "./form";
 
 export default function Home() {
-  return <RecordForm />;
+  return <Form />;
 }
