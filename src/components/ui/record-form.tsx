@@ -361,7 +361,6 @@ function Keypad(props: {
     const formatted = idrFormat(amount).replace("Rp", "").trim().split(",");
     const main = formatted[0];
     const decimal = formatted.length > 1 ? formatted[1] : "";
-    console.log(main, decimal);
     return {
       main: {
         amount: parseInt(main.replaceAll(".", "")),

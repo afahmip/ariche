@@ -19,15 +19,24 @@ enum Duration {
   Year = "year",
 }
 
-type Expense = Database["public"]["Tables"]["expenses"]["Row"] & {
+type Record = {
+  account_id: number | null;
+  category_id: number | null;
+  created_at: string;
+  decimal_amount: number;
+  id: number;
+  main_amount: number;
+  notes: string | null;
+  transacted_at: string;
+  is_expense: boolean;
   categories: Database["public"]["Tables"]["categories"]["Row"] | null;
   accounts: Database["public"]["Tables"]["accounts"]["Row"] | null;
 };
 
-type ExpenseGroup = {
+type RecordGroup = {
   label: string;
   totalAmount: number;
-  rows: Expense[];
+  rows: Record[];
 };
 
 export default function Records() {
@@ -38,22 +47,36 @@ export default function Records() {
     queryKey: ["transactions-data"],
     queryFn: async () => {
       const supabase = createClientComponentClient<Database>();
-      const { data } = await supabase
+      const { data: rawExpenses } = await supabase
         .from("expenses")
         .select(`*, categories(*), accounts(*)`)
         .order("transacted_at", { ascending: false })
         .throwOnError();
-      if (!data) return [];
-      return data;
+      const expenses = (rawExpenses ?? []).map((row) => ({
+        ...row,
+        is_expense: true,
+      }));
+
+      const { data: rawIncomes } = await supabase
+        .from("incomes")
+        .select(`*, categories(*), accounts(*)`)
+        .order("transacted_at", { ascending: false })
+        .throwOnError();
+      const incomes = (rawIncomes ?? []).map((row) => ({
+        ...row,
+        is_expense: false,
+      }));
+
+      return _.orderBy([...expenses, ...incomes], "transacted_at", "desc");
     },
     refetchOnWindowFocus: false,
     enabled: true,
   });
-  const rawExpenses = data ?? [];
-  const expenses = (
+  const rawRecords = data ?? [];
+  const records = (
     !query
-      ? rawExpenses
-      : new Fuse(rawExpenses, {
+      ? rawRecords
+      : new Fuse(rawRecords, {
           threshold: 0.4,
           keys: ["notes", "accounts.name"],
         })
@@ -67,12 +90,12 @@ export default function Records() {
     return date >= start && date <= end;
   });
 
-  const getExpenseGroups = () => {
-    const result: ExpenseGroup[] = [];
-    const map: { [label: string]: { index: number; rows: Expense[] } } = {};
+  const getRecordGroups = () => {
+    const result: RecordGroup[] = [];
+    const map: { [label: string]: { index: number; rows: Record[] } } = {};
     let index = 0;
 
-    expenses.forEach((row) => {
+    records.forEach((row) => {
       const label = DateTime.fromISO(row.transacted_at)
         .setLocale("id-ID")
         .setZone("Asia/Jakarta")
@@ -89,7 +112,7 @@ export default function Records() {
       }
     });
 
-    let sorted: { index: number; label: string; rows: Expense[] }[] = [];
+    let sorted: { index: number; label: string; rows: Record[] }[] = [];
     Object.entries(map).forEach(([label, item]) =>
       sorted.push({ ...item, label })
     );
@@ -97,7 +120,11 @@ export default function Records() {
 
     sorted.forEach((item) => {
       const totalAmount = item.rows.reduce(
-        (acc, it) => acc + parseFloat(`${it.main_amount}.${it.decimal_amount}`),
+        (acc, it) =>
+          acc +
+          parseFloat(
+            `${it.is_expense ? "-" : ""}${it.main_amount}.${it.decimal_amount}`
+          ),
         0
       );
       result.push({
@@ -134,12 +161,17 @@ export default function Records() {
           </button>
         ))}
       </div>
-      {getExpenseGroups().map((group) => (
+      {getRecordGroups().map((group) => (
         <div className="flex flex-col space-y-2 mb-6">
           <div className="flex">
             <div className="w-10 shrink-0" />
             <p className="text-sm font-semibold w-full">{group.label}</p>
-            <p className="text-sm font-semibold text-orange-600">
+            <p
+              className={cn(
+                "text-sm font-semibold whitespace-nowrap",
+                group.totalAmount < 0 ? "text-orange-600" : "text-green-600"
+              )}
+            >
               {idrFormat(group.totalAmount)}
             </p>
           </div>
@@ -152,28 +184,55 @@ export default function Records() {
   );
 }
 
-function RecordItem({ item }: { item: Expense }) {
+function RecordItem({ item }: { item: Record }) {
   const [open, setOpen] = useState(false);
 
   const queryClient = useQueryClient();
+
+  const getTableName = (isExpense: boolean) =>
+    isExpense ? "expenses" : "incomes";
 
   const { mutate: update, isLoading: isUpdating } = useMutation({
     mutationFn: async (values: RecordFormSchema) => {
       if (!values.id) return;
 
       const supabase = createClientComponentClient<Database>();
-      await supabase
-        .from("expenses")
-        .update({
-          category_id: values.categoryId,
-          account_id: values.accountId,
-          notes: values.notes,
-          main_amount: values.mainAmount,
-          decimal_amount: values.decimalAmount,
-          transacted_at: DateTime.fromJSDate(values.date).toSQL()!,
-        })
-        .eq("id", values.id)
-        .throwOnError();
+      if (values.isExpense === item.is_expense) {
+        const tableName = getTableName(values.isExpense);
+        await supabase
+          .from(tableName)
+          .update({
+            category_id: values.categoryId,
+            account_id: values.accountId,
+            notes: values.notes,
+            main_amount: values.mainAmount,
+            decimal_amount: values.decimalAmount,
+            transacted_at: DateTime.fromJSDate(values.date).toSQL()!,
+          })
+          .eq("id", values.id)
+          .throwOnError();
+      } else {
+        const oldTableName = getTableName(item.is_expense);
+        const newTableName = getTableName(values.isExpense);
+
+        await supabase
+          .from(oldTableName)
+          .delete()
+          .eq("id", values.id)
+          .throwOnError();
+
+        await supabase
+          .from(newTableName)
+          .insert({
+            category_id: values.categoryId,
+            account_id: values.accountId,
+            notes: values.notes,
+            main_amount: values.mainAmount,
+            decimal_amount: values.decimalAmount,
+            transacted_at: DateTime.fromJSDate(values.date).toSQL()!,
+          })
+          .throwOnError();
+      }
     },
     onSuccess: () => {
       queryClient.invalidateQueries(["transactions-data"]);
@@ -193,7 +252,8 @@ function RecordItem({ item }: { item: Expense }) {
             <p className="text-sm text-gray-500">{item.notes}</p>
           </div>
           <div className="flex flex-col items-end">
-            <p className="text-sm">
+            <p className="text-sm whitespace-nowrap">
+              {item.is_expense ? "-" : ""}
               {idrFormat(`${item.main_amount}.${item.decimal_amount}`)}
             </p>
             <p className="text-sm whitespace-nowrap text-gray-500">
@@ -209,7 +269,7 @@ function RecordItem({ item }: { item: Expense }) {
             mainAmount: item.main_amount,
             decimalAmount: item.decimal_amount,
             notes: item.notes || "",
-            isExpense: true,
+            isExpense: item.is_expense,
             date: DateTime.fromISO(item.transacted_at).toJSDate(),
             accountId: item.account_id ?? 0,
             categoryId: item.category_id ?? 0,
