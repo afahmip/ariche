@@ -1,10 +1,14 @@
 "use client";
 
+import RecordForm, { RecordFormSchema } from "@/components/ui/record-form";
+import { Sheet, SheetContent, SheetTrigger } from "@/components/ui/sheet";
+import { idrFormat } from "@/lib/currency";
 import { Database } from "@/lib/supabase.types";
 import { createClientComponentClient } from "@supabase/auth-helpers-nextjs";
 import { Loader2 } from "lucide-react";
+import { DateTime } from "luxon";
 import React, { useRef, useState } from "react";
-import { useMutation } from "react-query";
+import { useMutation, useQuery } from "react-query";
 import { z } from "zod";
 
 const OpenAIData = z.object({
@@ -23,13 +27,41 @@ const OpenAIData = z.object({
 
 type OpenAIData = z.infer<typeof OpenAIData>;
 
+type Record = {
+  temp_id: string;
+  account_id: number | null;
+  category_id: number | null;
+  created_at: string;
+  decimal_amount: number;
+  main_amount: number;
+  notes: string | null;
+  transacted_at: string;
+  is_expense: boolean;
+};
+
 export default function BulkUploadForm() {
   const inputRef = useRef<HTMLInputElement | null>(null);
   const [image, setImage] = useState<File | null>(null);
   const [preview, setPreview] = useState<string | null>(null);
   const [isLoading, setLoading] = useState(false);
   const [showData, setShowData] = useState(false);
+
+  const { data: categories } = useQuery({
+    queryKey: ["categories"],
+    queryFn: async () => {
+      const supabase = createClientComponentClient<Database>();
+      const { data, error } = await supabase
+        .from("categories")
+        .select("*")
+        .throwOnError();
+      if (error) return [];
+      return data;
+    },
+    enabled: true,
+  });
+
   const [openaiData, setOpenaiData] = useState<OpenAIData>();
+  const [records, setRecords] = useState<Record[]>([]);
 
   const handleImageChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
@@ -126,6 +158,25 @@ export default function BulkUploadForm() {
     },
   });
 
+  const updateRecord = (tempId: string, values: RecordFormSchema) => {
+    setRecords((prevState) => {
+      return prevState.map((it) => {
+        if (it.temp_id === tempId) {
+          return {
+            ...it,
+            category_id: values.categoryId,
+            account_id: values.accountId,
+            notes: values.notes || "",
+            main_amount: values.mainAmount,
+            decimal_amount: values.decimalAmount || 0,
+            transacted_at: DateTime.fromJSDate(values.date).toISO()!,
+          };
+        }
+        return it;
+      });
+    });
+  };
+
   return (
     <div className="flex flex-col justify-center items-center h-[90vh]">
       <form
@@ -171,16 +222,74 @@ export default function BulkUploadForm() {
         )}
       </form>
       {showData && (
-        <div className="mb-24">
-          {openaiData?.items.map((it) => (
-            <div className="flex space-x-2 text-sm" key={it.name}>
-              <p>{it.name} -</p>
-              <p>{it.category} -</p>
-              <p>Rp{it.subtotal}</p>
-            </div>
+        <div className="mb-24 w-full flex flex-col space-y-2 px-4">
+          {records.map((item) => (
+            <RecordItem
+              item={item}
+              categories={categories || []}
+              update={(val) => updateRecord(item.temp_id, val)}
+            />
           ))}
         </div>
       )}
     </div>
+  );
+}
+
+function RecordItem({
+  item,
+  categories,
+  update,
+}: {
+  item: Record;
+  categories: Database["public"]["Tables"]["categories"]["Row"][];
+  update: (values: RecordFormSchema) => void;
+}) {
+  const [open, setOpen] = useState(false);
+
+  const onUpdate = (values: RecordFormSchema) => {
+    update(values);
+    setOpen(false);
+  };
+
+  return (
+    <Sheet key={item.temp_id} open={open} onOpenChange={setOpen}>
+      <SheetTrigger className="flex">
+        <div className="w-10 shrink-0 pt-2 flex items-start">
+          <p className="text-3xl">
+            {categories?.find((cat) => cat.id === item.category_id)?.icon}
+          </p>
+        </div>
+        <div className="w-full flex pt-2 space-x-3 border-t border-dashed">
+          <div className="w-full flex flex-col items-start text-left">
+            <p className="font-medium text-sm">
+              {categories?.find((cat) => cat.id === item.category_id)?.label}
+            </p>
+            <p className="text-sm text-gray-500">{item.notes}</p>
+          </div>
+          <div className="flex flex-col items-end">
+            <p className="text-sm whitespace-nowrap">
+              {idrFormat(`${item.main_amount}.${item.decimal_amount}`)}
+            </p>
+            <p className="text-sm whitespace-nowrap text-gray-500">BCA</p>
+          </div>
+        </div>
+      </SheetTrigger>
+      <SheetContent side="bottom" className="h-[90vh] overflow-scroll px-0">
+        <RecordForm
+          initialValue={{
+            mainAmount: item.main_amount,
+            decimalAmount: item.decimal_amount,
+            notes: item.notes || "",
+            isExpense: item.is_expense,
+            date: DateTime.fromISO(item.transacted_at).toJSDate(),
+            accountId: item.account_id ?? 0,
+            categoryId: item.category_id ?? 0,
+          }}
+          onSubmit={onUpdate}
+          submitText="Update"
+        />
+      </SheetContent>
+    </Sheet>
   );
 }
