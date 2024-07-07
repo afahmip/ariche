@@ -2,6 +2,7 @@
 
 import RecordForm, { RecordFormSchema } from "@/components/ui/record-form";
 import { Sheet, SheetContent, SheetTrigger } from "@/components/ui/sheet";
+import { Dialog, DialogContent, DialogHeader } from "@/components/ui/dialog";
 import { idrFormat } from "@/lib/currency";
 import { Database } from "@/lib/supabase.types";
 import { createClientComponentClient } from "@supabase/auth-helpers-nextjs";
@@ -10,6 +11,7 @@ import { DateTime } from "luxon";
 import React, { useRef, useState } from "react";
 import { useMutation, useQuery } from "react-query";
 import { z } from "zod";
+import { Button } from "@/components/ui/button";
 
 const OpenAIData = z.object({
   items: z.array(
@@ -44,7 +46,7 @@ type Record = z.infer<typeof Record>;
 export default function BulkUploadForm() {
   const receiptInputRef = useRef<HTMLInputElement | null>(null);
   const [image, setImage] = useState<File | null>(null);
-  const [preview, setPreview] = useState<string | null>(null);
+  const [receipt, setReceipt] = useState<string | null>(null);
   const [isLoading, setLoading] = useState(false);
   const [showAddItemSheet, setShowAddItemSheet] = useState(false);
   const [records, setRecords] = useState<Record[]>([]);
@@ -67,7 +69,7 @@ export default function BulkUploadForm() {
     const file = e.target.files?.[0];
     if (file) {
       setImage(file);
-      setPreview(URL.createObjectURL(file));
+      setReceipt(URL.createObjectURL(file));
     }
   };
 
@@ -148,6 +150,7 @@ export default function BulkUploadForm() {
           const newRecords = [...records, ...openAIRecords];
           setRecords(newRecords);
           setLoading(false);
+          deleteReceipt();
         })
         .catch((error) => {
           console.error("Error uploading image:", error);
@@ -155,11 +158,9 @@ export default function BulkUploadForm() {
     }
   };
 
-  const deleteImage = () => {
-    setPreview(null);
-  };
+  const deleteReceipt = () => setReceipt(null);
 
-  const { mutate: uploadImage } = useMutation({
+  const { mutate: uploadReceipt } = useMutation({
     mutationFn: async () => {
       if (!image) return;
       setLoading(true);
@@ -225,39 +226,48 @@ export default function BulkUploadForm() {
 
   return (
     <div className="flex flex-col pt-4 items-center h-[90vh]">
-      <form
-        onSubmit={() => {}}
-        className="flex flex-col space-y-2 px-2 justify-center items-center"
+      <input
+        ref={receiptInputRef}
+        className="invisible w-0 h-0 absolute z-0"
+        type="file"
+        accept="image/*"
+        onChange={handleImageChange}
+        onClick={(e: any) => {
+          const element = e.target as HTMLInputElement;
+          element.value = "";
+        }}
+      />
+      <Dialog
+        open={!!receipt}
+        onOpenChange={(val: boolean) => {
+          if (isLoading) return;
+          if (!val) deleteReceipt();
+        }}
       >
-        <input
-          ref={receiptInputRef}
-          className="invisible w-0 h-0 absolute z-0"
-          type="file"
-          accept="image/*"
-          onChange={handleImageChange}
-        />
-        {preview && <img src={preview} alt="Preview" />}
-        {preview && (
-          <>
-            <button
-              type="button"
-              onClick={deleteImage}
-              className="border-gray-700 border py-3 px-4 block rounded-md"
-            >
-              Delete Receipt
-            </button>
-            <button
-              type="button"
-              onClick={() => uploadImage()}
-              disabled={isLoading}
-              className="bg-[#0177FF] text-white py-3 px-4 block rounded-md flex items-center disabled:opacity-70"
-            >
-              {isLoading && <Loader2 className="h-4 w-4 animate-spin mr-2" />}
-              Analyze Receipt
-            </button>
-          </>
-        )}
-      </form>
+        <DialogContent className="w-[95%] rounded-md">
+          <DialogHeader />
+          {receipt && (
+            <>
+              <img src={receipt} alt="Preview" className="rounded-md" />
+              <div className="flex flex-col space-y-1.5">
+                <Button
+                  variant="outline"
+                  onClick={deleteReceipt}
+                  disabled={isLoading}
+                >
+                  Delete Receipt
+                </Button>
+                <Button onClick={() => uploadReceipt()} disabled={isLoading}>
+                  {isLoading && (
+                    <Loader2 className="h-4 w-4 animate-spin mr-2" />
+                  )}
+                  Analyze Receipt
+                </Button>
+              </div>
+            </>
+          )}
+        </DialogContent>
+      </Dialog>
       <div className="mb-4 w-full flex flex-col space-y-2 px-4">
         {records.map((item) => (
           <RecordItem
