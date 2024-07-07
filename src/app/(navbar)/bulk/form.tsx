@@ -27,17 +27,19 @@ const OpenAIData = z.object({
 
 type OpenAIData = z.infer<typeof OpenAIData>;
 
-type Record = {
-  temp_id: string;
-  account_id: number | null;
-  category_id: number | null;
-  created_at: string;
-  decimal_amount: number;
-  main_amount: number;
-  notes: string | null;
-  transacted_at: string;
-  is_expense: boolean;
-};
+const Record = z.object({
+  temp_id: z.string(),
+  account_id: z.number().nullable(),
+  category_id: z.number().nullable(),
+  created_at: z.string(),
+  decimal_amount: z.number(),
+  main_amount: z.number(),
+  notes: z.string().nullable(),
+  transacted_at: z.string(),
+  is_expense: z.boolean(),
+});
+
+type Record = z.infer<typeof Record>;
 
 export default function BulkUploadForm() {
   const inputRef = useRef<HTMLInputElement | null>(null);
@@ -45,6 +47,7 @@ export default function BulkUploadForm() {
   const [preview, setPreview] = useState<string | null>(null);
   const [isLoading, setLoading] = useState(false);
   const [showData, setShowData] = useState(false);
+  const [records, setRecords] = useState<Record[]>([]);
 
   const { data: categories } = useQuery({
     queryKey: ["categories"],
@@ -59,9 +62,6 @@ export default function BulkUploadForm() {
     },
     enabled: true,
   });
-
-  const [openaiData, setOpenaiData] = useState<OpenAIData>();
-  const [records, setRecords] = useState<Record[]>([]);
 
   const handleImageChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
@@ -85,7 +85,7 @@ export default function BulkUploadForm() {
             {
               role: "system",
               content:
-                'Give concise, straightforward answers without useless sentences. Use this JSON format: {"items":[{"name":"name","category":"category","qty":3,"price":1000,"subtotal":3000}],"subtotal":3000,"date":"2024-03-23 16:16:32.472+00"}. The categories are: Food, Subscription, Shopping, Transportation. Change the item names into the nearest correct names, without acronyms etc, in Bahasa Indonesia.',
+                'Give concise, straightforward answers without useless sentences. Use this JSON format: {"items":[{"name":"name","category":"category","qty":3,"price":1000,"subtotal":3000}],"subtotal":3000,"date":"2024-04-10T14:47:00.604823+00:00"}. The categories are: Food, Subscription, Shopping, Transportation. Change the item names into the nearest correct names, without acronyms etc, in Bahasa Indonesia.',
             },
             {
               role: "user",
@@ -108,16 +108,44 @@ export default function BulkUploadForm() {
       })
         .then((response) => response.json())
         .then((data) => {
-          console.log(data);
           const rawContent = data?.choices?.[0]?.message.content ?? "";
-          let b = "";
+
+          // Extract content from the enclosing "```json ... ```"
+          let rawContentString = "";
           if (rawContent.startsWith("```json")) {
-            b = rawContent.replace("```json", "");
+            rawContentString = rawContent.replace("```json", "");
           }
           if (rawContent.endsWith("\n```")) {
-            b = b.slice(0, b.length - 4);
+            rawContentString = rawContentString.slice(
+              0,
+              rawContentString.length - 4
+            );
           }
-          setOpenaiData(JSON.parse(b));
+          const openAIData = OpenAIData.parse(JSON.parse(rawContentString));
+
+          // Parse raw content into Record object
+          const createdAt = DateTime.now().setZone("Asia/Jakarta").toISO();
+          const transactedAt = DateTime.fromISO(openAIData.date).toISO();
+          const records: Record[] = openAIData.items.map((it) => {
+            const category = (categories || []).find(
+              (cat) => cat.label === it.category
+            );
+            const mainAmount = Math.trunc(it.subtotal);
+            const decimalAmount = Math.trunc((it.subtotal - mainAmount) * 100);
+
+            return {
+              temp_id: crypto.randomUUID(),
+              created_at: createdAt || "",
+              transacted_at: transactedAt || "",
+              account_id: 0,
+              category_id: category?.id || 0,
+              main_amount: mainAmount,
+              decimal_amount: decimalAmount,
+              notes: it.name || "",
+              is_expense: true,
+            };
+          });
+          setRecords(records);
           setShowData(true);
           setLoading(false);
         })
@@ -146,12 +174,10 @@ export default function BulkUploadForm() {
         console.error(fileError);
         return;
       }
-      console.log(fileData);
 
       const { data, error } = await supabase.storage
         .from("receipts")
         .createSignedUrl(fileData.path, 600);
-      console.log(data, error);
       if (data?.signedUrl) {
         handleSubmit(data?.signedUrl);
       }
