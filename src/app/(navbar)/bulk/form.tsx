@@ -5,7 +5,7 @@ import { Sheet, SheetContent, SheetTrigger } from "@/components/ui/sheet";
 import { idrFormat } from "@/lib/currency";
 import { Database } from "@/lib/supabase.types";
 import { createClientComponentClient } from "@supabase/auth-helpers-nextjs";
-import { Loader2 } from "lucide-react";
+import { Loader2, PlusIcon, ReceiptTextIcon } from "lucide-react";
 import { DateTime } from "luxon";
 import React, { useRef, useState } from "react";
 import { useMutation, useQuery } from "react-query";
@@ -32,9 +32,9 @@ const Record = z.object({
   account_id: z.number().nullable(),
   category_id: z.number().nullable(),
   created_at: z.string(),
-  decimal_amount: z.number(),
+  decimal_amount: z.number().optional(),
   main_amount: z.number(),
-  notes: z.string().nullable(),
+  notes: z.string().optional(),
   transacted_at: z.string(),
   is_expense: z.boolean(),
 });
@@ -42,11 +42,11 @@ const Record = z.object({
 type Record = z.infer<typeof Record>;
 
 export default function BulkUploadForm() {
-  const inputRef = useRef<HTMLInputElement | null>(null);
+  const receiptInputRef = useRef<HTMLInputElement | null>(null);
   const [image, setImage] = useState<File | null>(null);
   const [preview, setPreview] = useState<string | null>(null);
   const [isLoading, setLoading] = useState(false);
-  const [showData, setShowData] = useState(false);
+  const [showAddItemSheet, setShowAddItemSheet] = useState(false);
   const [records, setRecords] = useState<Record[]>([]);
 
   const { data: categories } = useQuery({
@@ -126,7 +126,7 @@ export default function BulkUploadForm() {
           // Parse raw content into Record object
           const createdAt = DateTime.now().setZone("Asia/Jakarta").toISO();
           const transactedAt = DateTime.fromISO(openAIData.date).toISO();
-          const records: Record[] = openAIData.items.map((it) => {
+          const openAIRecords: Record[] = openAIData.items.map((it) => {
             const category = (categories || []).find(
               (cat) => cat.label === it.category
             );
@@ -145,8 +145,8 @@ export default function BulkUploadForm() {
               is_expense: true,
             };
           });
-          setRecords(records);
-          setShowData(true);
+          const newRecords = [...records, ...openAIRecords];
+          setRecords(newRecords);
           setLoading(false);
         })
         .catch((error) => {
@@ -178,6 +178,9 @@ export default function BulkUploadForm() {
       const { data, error } = await supabase.storage
         .from("receipts")
         .createSignedUrl(fileData.path, 600);
+      if (error) {
+        console.error(error);
+      }
       if (data?.signedUrl) {
         handleSubmit(data?.signedUrl);
       }
@@ -192,9 +195,9 @@ export default function BulkUploadForm() {
             ...it,
             category_id: values.categoryId,
             account_id: values.accountId,
-            notes: values.notes || "",
+            notes: values.notes,
             main_amount: values.mainAmount,
-            decimal_amount: values.decimalAmount || 0,
+            decimal_amount: values.decimalAmount,
             transacted_at: DateTime.fromJSDate(values.date).toISO()!,
           };
         }
@@ -203,14 +206,31 @@ export default function BulkUploadForm() {
     });
   };
 
+  const onAddRecord = (values: RecordFormSchema) => {
+    const newRecord: Record = {
+      temp_id: crypto.randomUUID(),
+      created_at: DateTime.now().toISO(),
+      transacted_at: DateTime.fromJSDate(values.date).toISO()!,
+      account_id: values.accountId,
+      category_id: values.categoryId,
+      main_amount: values.mainAmount,
+      decimal_amount: values.decimalAmount,
+      notes: values.notes,
+      is_expense: true,
+    };
+    const newRecords = [...records, newRecord];
+    setRecords(newRecords);
+    setShowAddItemSheet(false);
+  };
+
   return (
-    <div className="flex flex-col justify-center items-center h-[90vh]">
+    <div className="flex flex-col pt-4 items-center h-[90vh]">
       <form
         onSubmit={() => {}}
         className="flex flex-col space-y-2 px-2 justify-center items-center"
       >
         <input
-          ref={inputRef}
+          ref={receiptInputRef}
           className="invisible w-0 h-0 absolute z-0"
           type="file"
           accept="image/*"
@@ -237,27 +257,34 @@ export default function BulkUploadForm() {
             </button>
           </>
         )}
-        {!preview && (
-          <button
-            type="button"
-            onClick={() => inputRef.current?.click()}
-            className="bg-[#0177FF] text-white py-3 px-4 block rounded-md"
-          >
-            Upload Receipt
-          </button>
-        )}
       </form>
-      {showData && (
-        <div className="mb-24 w-full flex flex-col space-y-2 px-4">
-          {records.map((item) => (
-            <RecordItem
-              item={item}
-              categories={categories || []}
-              update={(val) => updateRecord(item.temp_id, val)}
-            />
-          ))}
-        </div>
-      )}
+      <div className="mb-4 w-full flex flex-col space-y-2 px-4">
+        {records.map((item) => (
+          <RecordItem
+            item={item}
+            categories={categories || []}
+            update={(val) => updateRecord(item.temp_id, val)}
+          />
+        ))}
+      </div>
+      <div className="px-4 w-full flex flex-col items-center space-y-1">
+        <button
+          type="button"
+          onClick={() => receiptInputRef.current?.click()}
+          className="border-dashed border border-gray-500 text-[#0177FF] font-medium py-3 px-4 block rounded-md w-full flex items-center justify-center"
+        >
+          <ReceiptTextIcon className="mr-1" /> Upload Receipt
+        </button>
+        <p className="font-medium">or</p>
+        <Sheet open={showAddItemSheet} onOpenChange={setShowAddItemSheet}>
+          <SheetTrigger className="border-dashed border border-gray-500 text-[#0177FF] font-medium py-3 px-4 block rounded-md w-full flex items-center justify-center">
+            <PlusIcon className="mr-1" /> Add Item
+          </SheetTrigger>
+          <SheetContent side="bottom" className="h-[90vh] overflow-scroll px-0">
+            <RecordForm onSubmit={onAddRecord} submitText="Add Item" />
+          </SheetContent>
+        </Sheet>
+      </div>
     </div>
   );
 }
